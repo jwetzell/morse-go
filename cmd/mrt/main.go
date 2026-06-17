@@ -246,7 +246,7 @@ func main() {
 					lastSequenceNo = idPacket.SequenceNo
 					continue
 				} else {
-					slog.Debug("Received DataPacket", "stationID", dataPacket.StationID, "sequenceNo", dataPacket.SequenceNo, "codeList", dataPacket.CodeList, "ditDahs", ditDahs, "letter", letter)
+					slog.Debug("Received DataPacket", "stationID", dataPacket.StationID, "sequenceNo", dataPacket.SequenceNo, "codeList", dataPacket.CodeList)
 					kobWire.RegisterCodeList(dataPacket.CodeList)
 					lastSequenceNo = dataPacket.SequenceNo
 				}
