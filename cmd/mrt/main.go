@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/jwetzell/morse-go/kob"
-	"gitlab.com/gomidi/midi/v2"
-	_ "gitlab.com/gomidi/midi/v2/drivers/rtmididrv" // autoregisters driver
 )
 
 var server string
@@ -25,7 +23,6 @@ var ditMax int
 var wordSpace int
 
 var stationID string
-var midiOutPort string
 
 func init() {
 	flag.StringVar(&server, "server", "mtc-kob.dyndns.org", "KOB server address")
@@ -37,11 +34,6 @@ func init() {
 	flag.IntVar(&wordSpace, "word-space", 200, "Minimum code list value to consider as a word space (default: 400)")
 
 	flag.StringVar(&stationID, "station-id", "", "Station ID")
-	flag.StringVar(&midiOutPort, "midi-out", "", "MIDI output port name (optional)")
-}
-
-var sendFunc func([]byte) error = func(data []byte) error {
-	return nil
 }
 
 func main() {
@@ -77,29 +69,19 @@ func main() {
 		return
 	}
 
-	if midiOutPort != "" {
-		out, err := midi.FindOutPort(midiOutPort)
-		if err != nil {
-			slog.Error("can't find midi output", "port", midiOutPort, "error", err)
-			return
-		}
-
-		err = out.Open()
-		if err != nil {
-			slog.Error("can't open midi output", "port", midiOutPort, "error", err)
-			return
-		}
-
-		sendFunc = out.Send
+	hostPort := net.JoinHostPort(server, fmt.Sprintf("%d", port))
+	udpAddr, err := net.ResolveUDPAddr("udp", hostPort)
+	if err != nil {
+		slog.Error("Failed to resolve server address", "error", err)
+		return
 	}
-
-	conn, err := net.Dial("udp", net.JoinHostPort(server, fmt.Sprintf("%d", port)))
+	conn, err := net.DialUDP("udp", nil, udpAddr)
 	if err != nil {
 		slog.Error("Failed to connect to server", "error", err)
 	}
 	defer conn.Close()
 
-	station := kob.NewStation(stationID, "kob-go 0.0.0")
+	station := kob.NewStation(ctx, stationID, "kob-go 0.0.0")
 
 	connectPacket := kob.ConnectPacket{Wire: uint16(wire)}
 
@@ -115,29 +97,35 @@ func main() {
 	data, err := connectPacket.MarshalBinary()
 	if err != nil {
 		slog.Error("Failed to marshal ConnectPacket", "error", err)
+		return
 	}
 
 	_, err = conn.Write(data)
 	if err != nil {
 		slog.Error("Failed to write ConnectPacket", "error", err)
+		return
 	}
 
 	idData, err := idPacket.MarshalBinary()
 	if err != nil {
 		slog.Error("Failed to marshal IDPacket", "error", err)
-
+		return
 	}
 
 	_, err = conn.Write(idData)
 	if err != nil {
 		slog.Error("Failed to write IDPacket", "error", err)
-
+		return
 	}
 
 	go func() {
+		defer func() {
+			slog.Debug("keepalive packet sender stopped")
+		}()
 		for ctx.Err() == nil {
 			select {
 			case <-ctx.Done():
+				connectPacketTicker.Stop()
 				return
 			case <-connectPacketTicker.C:
 				data, err := connectPacket.MarshalBinary()
@@ -163,37 +151,32 @@ func main() {
 					slog.Error("Failed to write IDPacket", "error", err)
 					continue
 				}
+				idPacket.SequenceNo = idPacket.SequenceNo + 1
+			default:
+				continue
 			}
 		}
-		slog.Debug("Connect packet sender stopped")
 	}()
 	kobWire := kob.NewWire(ctx)
 	kobWire.Connect(station)
 	go func() {
+		defer func() {
+			slog.Debug("wire watcher stopped")
+		}()
 		for ctx.Err() == nil {
 			select {
 			case <-ctx.Done():
 				return
 			case state := <-kobWire.State:
-				slog.Debug("wire state changed", "latched", state)
-				var msg []byte
-				if midiOutPort != "" {
-					// TODO(jwetzell): make this configurable
-					if state {
-						msg = []byte{0x90, 76, 127}
-					} else {
-						msg = []byte{0x80, 76, 0}
-					}
+				if state {
+					slog.Debug("wire state changed", "state", "open")
+				} else {
+					slog.Debug("wire state changed", "state", "closed")
 				}
-				if msg != nil {
-					err := sendFunc(msg)
-					if err != nil {
-						slog.Error("Failed to send event", "error", err)
-					}
-				}
+			default:
+				continue
 			}
 		}
-		slog.Debug("wire watcher stopped")
 	}()
 
 	buffer := make([]byte, 2048)
@@ -203,9 +186,6 @@ func main() {
 	stations[station.ID()] = station
 
 	defer func() {
-		for _, s := range stations {
-			s.Close()
-		}
 		kobWire.Close()
 	}()
 
@@ -270,7 +250,7 @@ func main() {
 					_, exists := stations[idPacket.StationID]
 					if !exists {
 						slog.Info("New station connected", "stationID", idPacket.StationID, "version", idPacket.Version)
-						newStation := kob.NewStation(idPacket.StationID, idPacket.Version)
+						newStation := kob.NewStation(ctx, idPacket.StationID, idPacket.Version)
 						stations[idPacket.StationID] = newStation
 						kobWire.Connect(newStation)
 					}
@@ -283,7 +263,7 @@ func main() {
 					existingStation, exists := stations[dataPacket.StationID]
 					if !exists {
 						slog.Info("Data seen from new station", "stationID", dataPacket.StationID)
-						newStation := kob.NewStation(dataPacket.StationID, "")
+						newStation := kob.NewStation(ctx, dataPacket.StationID, "")
 						stations[dataPacket.StationID] = newStation
 						kobWire.Connect(newStation)
 						stationForData = newStation
@@ -317,4 +297,5 @@ func main() {
 			}
 		}
 	}
+	<-ctx.Done()
 }

@@ -1,7 +1,7 @@
 package kob
 
 import (
-	"log/slog"
+	"context"
 	"math"
 	"sync"
 	"time"
@@ -13,11 +13,13 @@ type Station struct {
 	pendingEventsMu sync.Mutex
 	pendingEvents   []int32
 	State           chan bool
-	closed          bool
+	ctx             context.Context
+	latched         bool
 }
 
-func NewStation(id, version string) *Station {
+func NewStation(ctx context.Context, id, version string) *Station {
 	station := &Station{
+		ctx:           ctx,
 		id:            id,
 		version:       version,
 		State:         make(chan bool, 1),
@@ -27,32 +29,43 @@ func NewStation(id, version string) *Station {
 	return station
 }
 
-func (s *Station) Close() {
-	slog.Debug("closing station", "stationID", s.id)
-	s.closed = true
+func (s *Station) sendState(state bool) {
+	select {
+	case s.State <- state:
+	default:
+	}
 }
 
 func (s *Station) processLoop() {
-	for !s.closed {
+	for s.ctx.Err() == nil {
 		s.pendingEventsMu.Lock()
 		if len(s.pendingEvents) > 0 {
 			pending := s.pendingEvents[0]
-			if pending < -3000 && len(s.pendingEvents) > 1 {
-				if s.pendingEvents[1] == 2 {
-					// special case for break (consume two events)
+			if pending < 0 && len(s.pendingEvents) > 1 {
+				switch s.pendingEvents[1] {
+				case 2:
+					s.latched = false
 					s.pendingEvents = s.pendingEvents[2:]
-					s.State <- false
+					s.sendState(false)
+					s.pendingEventsMu.Unlock()
 					continue
 				}
-			} else {
-				s.pendingEvents = s.pendingEvents[1:]
-				switch pending {
-				default:
-					s.State <- pending < 0
-				}
 			}
+			s.pendingEvents = s.pendingEvents[1:]
 			s.pendingEventsMu.Unlock()
 			time.Sleep(time.Duration(math.Abs(float64(pending))) * time.Millisecond)
+			switch pending {
+			case 1:
+				s.latched = true
+				s.sendState(true)
+			case 2:
+				s.latched = false
+				s.sendState(false)
+			default:
+				if !s.latched {
+					s.sendState(pending > 0)
+				}
+			}
 		} else {
 			s.pendingEventsMu.Unlock()
 		}
