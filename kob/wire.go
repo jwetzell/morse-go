@@ -1,46 +1,72 @@
 package kob
 
 import (
-	"math"
+	"context"
+	"log/slog"
 	"sync"
-	"time"
 )
 
 type Wire struct {
-	State             chan bool
-	pendingMessagesMu sync.Mutex
-	pendingMesssages  []int32
+	State          chan bool
+	stationsMu     sync.Mutex
+	stationCancels map[string]context.CancelFunc
 }
 
-func NewWire() *Wire {
+func NewWire(ctx context.Context) *Wire {
 	wire := &Wire{
-		State: make(chan bool, 1),
+		State:          make(chan bool, 1),
+		stationCancels: make(map[string]context.CancelFunc),
 	}
-	go wire.processLoop()
+	wire.State <- false
 	return wire
 }
 
-func (w *Wire) processLoop() {
-
-	for {
-		w.pendingMessagesMu.Lock()
-		if len(w.pendingMesssages) > 0 {
-			pending := w.pendingMesssages[0]
-			w.pendingMesssages = w.pendingMesssages[1:]
-			w.State <- pending > 0
-			w.pendingMessagesMu.Unlock()
-			time.Sleep(time.Duration(math.Abs(float64(pending))) * time.Millisecond)
-		} else {
-			w.pendingMessagesMu.Unlock()
-		}
+func (w *Wire) Close() {
+	slog.Debug("closing wire")
+	w.stationsMu.Lock()
+	defer w.stationsMu.Unlock()
+	for stationID, cancel := range w.stationCancels {
+		cancel()
+		delete(w.stationCancels, stationID)
 	}
+	close(w.State)
 }
-func (w *Wire) RegisterCodeList(codeList []int32) {
-	if len(codeList) == 0 {
+
+func (w *Wire) Connect(station *Station) {
+	w.stationsMu.Lock()
+	defer w.stationsMu.Unlock()
+	_, exists := w.stationCancels[station.ID()]
+	if exists {
 		return
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	w.stationCancels[station.ID()] = cancel
+	go w.handleStation(ctx, station)
+}
 
-	w.pendingMessagesMu.Lock()
-	w.pendingMesssages = append(w.pendingMesssages, codeList...)
-	w.pendingMessagesMu.Unlock()
+func (w *Wire) Disconnect(station *Station) {
+	w.stationsMu.Lock()
+	defer w.stationsMu.Unlock()
+	cancel, exists := w.stationCancels[station.ID()]
+	if exists {
+		cancel()
+		delete(w.stationCancels, station.ID())
+	}
+}
+
+func (w *Wire) handleStation(ctx context.Context, station *Station) {
+	for ctx.Err() == nil {
+		select {
+		case <-ctx.Done():
+			return
+		case state := <-station.State:
+			slog.Debug("station state changed", "stationID", station.ID(), "state", state)
+			if ctx.Err() != nil {
+				slog.Debug("context cancelled, stopping station handler", "stationID", station.ID())
+				return
+			}
+			w.State <- state
+		}
+	}
+	slog.Debug("station handler stopped", "stationID", station.ID())
 }

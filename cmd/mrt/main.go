@@ -99,16 +99,18 @@ func main() {
 	}
 	defer conn.Close()
 
+	station := kob.NewStation(stationID, "kob-go 0.0.0")
+
 	connectPacket := kob.ConnectPacket{Wire: uint16(wire)}
 
 	idPacket := kob.IDPacket{
-		StationID:  stationID,
+		StationID:  station.ID(),
 		SequenceNo: 1,
 		Flags:      0,
-		Version:    "kob-go 0.0.0",
+		Version:    station.Version(),
 	}
 
-	connectPacketTicker := time.NewTicker(time.Second * 5)
+	connectPacketTicker := time.NewTicker(time.Second * 10)
 
 	data, err := connectPacket.MarshalBinary()
 	if err != nil {
@@ -133,59 +135,81 @@ func main() {
 	}
 
 	go func() {
-		for range connectPacketTicker.C {
-			data, err := connectPacket.MarshalBinary()
-			if err != nil {
-				slog.Error("Failed to marshal ConnectPacket", "error", err)
-				continue
-			}
-
-			_, err = conn.Write(data)
-			if err != nil {
-				slog.Error("Failed to write ConnectPacket", "error", err)
-				continue
-			}
-
-			idData, err := idPacket.MarshalBinary()
-			if err != nil {
-				slog.Error("Failed to marshal IDPacket", "error", err)
-				continue
-			}
-
-			_, err = conn.Write(idData)
-			if err != nil {
-				slog.Error("Failed to write IDPacket", "error", err)
-				continue
-			}
-		}
-	}()
-
-	kobWire := kob.NewWire()
-
-	go func() {
-		for state := range kobWire.State {
-
-			var msg []byte
-			if midiOutPort != "" {
-				// TODO(jwetzell): make this configurable
-				if state {
-					msg = []byte{0x90, 76, 127}
-				} else {
-					msg = []byte{0x80, 76, 0}
-				}
-			}
-			if msg != nil {
-				err := sendFunc(msg)
+		for ctx.Err() == nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-connectPacketTicker.C:
+				data, err := connectPacket.MarshalBinary()
 				if err != nil {
-					slog.Error("Failed to send event", "error", err)
+					slog.Error("Failed to marshal ConnectPacket", "error", err)
+					continue
+				}
+
+				_, err = conn.Write(data)
+				if err != nil {
+					slog.Error("Failed to write ConnectPacket", "error", err)
+					continue
+				}
+
+				idData, err := idPacket.MarshalBinary()
+				if err != nil {
+					slog.Error("Failed to marshal IDPacket", "error", err)
+					continue
+				}
+
+				_, err = conn.Write(idData)
+				if err != nil {
+					slog.Error("Failed to write IDPacket", "error", err)
+					continue
 				}
 			}
 		}
+		slog.Debug("Connect packet sender stopped")
+	}()
+	kobWire := kob.NewWire(ctx)
+	kobWire.Connect(station)
+	go func() {
+		for ctx.Err() == nil {
+			select {
+			case <-ctx.Done():
+				return
+			case state := <-kobWire.State:
+				slog.Debug("wire state changed", "latched", state)
+				var msg []byte
+				if midiOutPort != "" {
+					// TODO(jwetzell): make this configurable
+					if state {
+						msg = []byte{0x90, 76, 127}
+					} else {
+						msg = []byte{0x80, 76, 0}
+					}
+				}
+				if msg != nil {
+					err := sendFunc(msg)
+					if err != nil {
+						slog.Error("Failed to send event", "error", err)
+					}
+				}
+			}
+		}
+		slog.Debug("wire watcher stopped")
 	}()
 
 	buffer := make([]byte, 2048)
 	var lastSequenceNo uint32
-	for {
+
+	stations := make(map[string]*kob.Station)
+	stations[station.ID()] = station
+
+	defer func() {
+		for _, s := range stations {
+			s.Close()
+		}
+		kobWire.Close()
+	}()
+
+	for ctx.Err() == nil {
 		select {
 		case <-ctx.Done():
 			slog.Info("Shutting down...")
@@ -202,11 +226,11 @@ func main() {
 			return
 		default:
 
-			conn.SetDeadline(time.Now().Add(time.Second * 100))
+			conn.SetDeadline(time.Now().Add(time.Millisecond * 100))
 
 			n, err := conn.Read(buffer)
 			if err != nil {
-				slog.Error("Failed to read", "error", err)
+				continue
 			}
 
 			bytes := buffer[:n]
@@ -225,7 +249,6 @@ func main() {
 					continue
 				}
 				slog.Info("Received DisconnectPacket", "wire", disconnectPacket.Wire)
-				return
 			case 0x3:
 				var dataPacket kob.DataPacket
 				err := dataPacket.UnmarshalBinary(bytes)
@@ -244,11 +267,33 @@ func main() {
 						slog.Error("Failed to unmarshal IDPacket", "error", err)
 					}
 					lastSequenceNo = idPacket.SequenceNo
+					_, exists := stations[idPacket.StationID]
+					if !exists {
+						slog.Info("New station connected", "stationID", idPacket.StationID, "version", idPacket.Version)
+						newStation := kob.NewStation(idPacket.StationID, idPacket.Version)
+						stations[idPacket.StationID] = newStation
+						kobWire.Connect(newStation)
+					}
 					continue
 				} else {
 					slog.Debug("Received DataPacket", "stationID", dataPacket.StationID, "sequenceNo", dataPacket.SequenceNo, "codeList", dataPacket.CodeList)
-					kobWire.RegisterCodeList(dataPacket.CodeList)
 					lastSequenceNo = dataPacket.SequenceNo
+
+					var stationForData *kob.Station
+					existingStation, exists := stations[dataPacket.StationID]
+					if !exists {
+						slog.Info("Data seen from new station", "stationID", dataPacket.StationID)
+						newStation := kob.NewStation(dataPacket.StationID, "")
+						stations[dataPacket.StationID] = newStation
+						kobWire.Connect(newStation)
+						stationForData = newStation
+					} else {
+						stationForData = existingStation
+					}
+
+					if stationForData != nil {
+						stationForData.PushCodeList(dataPacket.CodeList)
+					}
 				}
 			case 0x4:
 				var connectPacket kob.ConnectPacket
