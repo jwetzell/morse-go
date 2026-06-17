@@ -1,4 +1,4 @@
-package mkob
+package kob
 
 import (
 	"math"

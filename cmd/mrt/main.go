@@ -11,8 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jwetzell/morse-go"
-	"github.com/jwetzell/morse-go/mkob"
+	"github.com/jwetzell/morse-go/kob"
 	"gitlab.com/gomidi/midi/v2"
 	_ "gitlab.com/gomidi/midi/v2/drivers/rtmididrv" // autoregisters driver
 )
@@ -25,17 +24,19 @@ var debug bool
 var ditMax int
 var wordSpace int
 
+var stationID string
 var midiOutPort string
 
 func init() {
-	flag.StringVar(&server, "server", "mtc-kob.dyndns.org", "MTC-KOB server address")
-	flag.IntVar(&port, "port", 7890, "MTC-KOB server port")
+	flag.StringVar(&server, "server", "mtc-kob.dyndns.org", "KOB server address")
+	flag.IntVar(&port, "port", 7890, "KOB server port")
 	flag.IntVar(&wire, "wire", 101, "Wire number to connect to")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
 
 	flag.IntVar(&ditMax, "dit-max", 100, "Maximum code list value to consider as a dit (default: 100)")
-	flag.IntVar(&wordSpace, "word-space", 400, "Minimum code list value to consider as a word space (default: 400)")
+	flag.IntVar(&wordSpace, "word-space", 200, "Minimum code list value to consider as a word space (default: 400)")
 
+	flag.StringVar(&stationID, "station-id", "", "Station ID")
 	flag.StringVar(&midiOutPort, "midi-out", "", "MIDI output port name (optional)")
 }
 
@@ -45,6 +46,11 @@ var sendFunc func([]byte) error = func(data []byte) error {
 
 func main() {
 	flag.Parse()
+
+	if stationID == "" {
+		slog.Error("Station ID is required")
+		return
+	}
 
 	var logLevel slog.Level = slog.LevelInfo
 	if debug {
@@ -93,13 +99,13 @@ func main() {
 	}
 	defer conn.Close()
 
-	connectPacket := mkob.ConnectPacket{Wire: uint16(wire)}
+	connectPacket := kob.ConnectPacket{Wire: uint16(wire)}
 
-	idPacket := mkob.IDPacket{
-		StationID:  "KD9PUI",
+	idPacket := kob.IDPacket{
+		StationID:  stationID,
 		SequenceNo: 1,
 		Flags:      0,
-		Version:    "mkob-go 0.0.0",
+		Version:    "kob-go 0.0.0",
 	}
 
 	connectPacketTicker := time.NewTicker(time.Second * 5)
@@ -154,10 +160,10 @@ func main() {
 		}
 	}()
 
-	mkobWire := mkob.NewWire()
+	kobWire := kob.NewWire()
 
 	go func() {
-		for state := range mkobWire.State {
+		for state := range kobWire.State {
 
 			var msg []byte
 			if midiOutPort != "" {
@@ -183,7 +189,7 @@ func main() {
 		select {
 		case <-ctx.Done():
 			slog.Info("Shutting down...")
-			disconnectPacket := mkob.DisconnectPacket{Wire: uint16(wire)}
+			disconnectPacket := kob.DisconnectPacket{Wire: uint16(wire)}
 			data, err := disconnectPacket.MarshalBinary()
 			if err != nil {
 				slog.Error("Failed to marshal DisconnectPacket", "error", err)
@@ -212,7 +218,7 @@ func main() {
 			commandCode := int(bytes[0]) | (int(bytes[1]) << 8)
 			switch commandCode {
 			case 0x2:
-				var disconnectPacket mkob.DisconnectPacket
+				var disconnectPacket kob.DisconnectPacket
 				err := disconnectPacket.UnmarshalBinary(bytes)
 				if err != nil {
 					slog.Error("Failed to unmarshal DisconnectPacket", "error", err)
@@ -221,7 +227,7 @@ func main() {
 				slog.Info("Received DisconnectPacket", "wire", disconnectPacket.Wire)
 				return
 			case 0x3:
-				var dataPacket mkob.DataPacket
+				var dataPacket kob.DataPacket
 				err := dataPacket.UnmarshalBinary(bytes)
 				if err != nil {
 					slog.Error("Failed to unmarshal DataPacket", "error", err)
@@ -232,7 +238,7 @@ func main() {
 				}
 
 				if len(dataPacket.CodeList) == 0 {
-					var idPacket mkob.IDPacket
+					var idPacket kob.IDPacket
 					err := idPacket.UnmarshalBinary(bytes)
 					if err != nil {
 						slog.Error("Failed to unmarshal IDPacket", "error", err)
@@ -240,23 +246,12 @@ func main() {
 					lastSequenceNo = idPacket.SequenceNo
 					continue
 				} else {
-					ditDahs := morse.CodeListToDitDahs(dataPacket.CodeList, int32(ditMax))
-
-					letter, err := morse.ASCIIFromDitDahs(ditDahs)
-					if err != nil {
-						slog.Error("Failed to convert dit-dahs to ASCII", "error", err)
-						continue
-					}
-					if dataPacket.CodeList[0] < -int32(wordSpace) {
-						os.Stdout.Write([]byte(" "))
-					}
 					slog.Debug("Received DataPacket", "stationID", dataPacket.StationID, "sequenceNo", dataPacket.SequenceNo, "codeList", dataPacket.CodeList, "ditDahs", ditDahs, "letter", letter)
-					os.Stdout.Write([]byte(letter))
-					mkobWire.RegisterCodeList(dataPacket.CodeList)
+					kobWire.RegisterCodeList(dataPacket.CodeList)
 					lastSequenceNo = dataPacket.SequenceNo
 				}
 			case 0x4:
-				var connectPacket mkob.ConnectPacket
+				var connectPacket kob.ConnectPacket
 				err := connectPacket.UnmarshalBinary(bytes)
 				if err != nil {
 					slog.Error("Failed to unmarshal ConnectPacket", "error", err)
@@ -265,7 +260,7 @@ func main() {
 				slog.Debug("Received ConnectPacket", "wire", connectPacket.Wire)
 				continue
 			case 0x5:
-				var ackPacket mkob.AckPacket
+				var ackPacket kob.AckPacket
 				err := ackPacket.UnmarshalBinary(bytes)
 				if err != nil {
 					slog.Error("Failed to unmarshal AckPacket", "error", err)
