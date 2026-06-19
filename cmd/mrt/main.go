@@ -22,9 +22,6 @@ var port int
 var wire int
 var debug bool
 
-var ditMax int
-var wordSpace int
-
 var stationID string
 var midiOut string
 
@@ -33,10 +30,6 @@ func init() {
 	flag.IntVar(&port, "port", 7890, "KOB server port")
 	flag.IntVar(&wire, "wire", 101, "Wire number to connect to")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
-
-	flag.IntVar(&ditMax, "dit-max", 100, "Maximum code list value to consider as a dit (default: 100)")
-	flag.IntVar(&wordSpace, "word-space", 200, "Minimum code list value to consider as a word space (default: 400)")
-
 	flag.StringVar(&stationID, "station-id", "", "Station ID")
 	flag.StringVar(&midiOut, "midi-out", "", "MIDI output device name (optional)")
 }
