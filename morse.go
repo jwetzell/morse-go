@@ -1,6 +1,9 @@
 package morse
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 var codeMap map[rune]string
 
@@ -89,17 +92,16 @@ func ASCIIFromDitDahs(ditDahs string) (string, error) {
 	return result, nil
 }
 
-// TODO(jwetzell): super basic, only support a single character and international morse code timings
-func CodeListToDitDahs(codeList []int32, ditMax int32) string {
-	var result string
-	for _, transition := range codeList {
-		if transition > 0 {
-			if transition > ditMax {
-				result += "-"
-			} else {
-				result += "."
-			}
-		}
+func WPMToElementDuration(wpm uint) time.Duration {
+	ditDuration := 1200 / wpm
+	return time.Duration(ditDuration) * time.Millisecond
+}
+
+func ElementDurationToWPM(duration time.Duration) uint {
+	ditDuration := duration.Milliseconds()
+	if ditDuration == 0 {
+		return 0
 	}
-	return result
+	wpm := 1200 / uint(ditDuration)
+	return wpm
 }
