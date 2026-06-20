@@ -17,7 +17,7 @@ import (
 	_ "gitlab.com/gomidi/midi/v2/drivers/rtmididrv"
 )
 
-var server string
+var host string
 var port int
 var wire int
 var debug bool
@@ -26,7 +26,7 @@ var stationID string
 var midiOut string
 
 func init() {
-	flag.StringVar(&server, "server", "mtc-kob.dyndns.org", "KOB server address")
+	flag.StringVar(&host, "host", "mtc-kob.dyndns.org", "KOB server address")
 	flag.IntVar(&port, "port", 7890, "KOB server port")
 	flag.IntVar(&wire, "wire", 101, "Wire number to connect to")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
@@ -53,7 +53,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if server == "" {
+	if host == "" {
 		slog.Error("Server address is required")
 		return
 	}
@@ -68,7 +68,7 @@ func main() {
 		return
 	}
 
-	hostPort := net.JoinHostPort(server, fmt.Sprintf("%d", port))
+	hostPort := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	udpAddr, err := net.ResolveUDPAddr("udp", hostPort)
 	if err != nil {
 		slog.Error("Failed to resolve server address", "error", err)
