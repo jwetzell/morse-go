@@ -17,3 +17,18 @@ func ElementDurationToWPM(duration time.Duration) uint {
 	wpm := 1200 / uint(ditDuration)
 	return wpm
 }
+
+func DitDahsToIntervals(ditDahs string, wpm uint) []time.Duration {
+	var intervals []time.Duration
+	ditDuration := WPMToElementDuration(wpm)
+	for _, c := range ditDahs {
+		switch c {
+		case '.':
+			intervals = append(intervals, ditDuration)
+		case '-':
+			intervals = append(intervals, ditDuration*3)
+		}
+		intervals = append(intervals, -ditDuration)
+	}
+	return intervals
+}
