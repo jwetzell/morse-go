@@ -24,8 +24,6 @@ func init() {
 }
 
 type Server struct {
-	wires               map[uint16]*kob.Wire
-	stations            map[string]*kob.Station
 	addrWireConnections map[netip.AddrPort]uint16
 	addrStationMap      map[netip.AddrPort]string
 	conn                *net.UDPConn
@@ -71,10 +69,8 @@ func main() {
 	defer cancel()
 
 	server := &Server{
-		wires:               make(map[uint16]*kob.Wire),
 		addrWireConnections: make(map[netip.AddrPort]uint16),
 		addrStationMap:      make(map[netip.AddrPort]string),
-		stations:            make(map[string]*kob.Station),
 		conn:                conn,
 		ctx:                 ctx,
 	}
@@ -123,21 +119,8 @@ func (s *Server) handleData(data []byte, addr *net.UDPAddr) {
 			slog.Warn("received DisconnectPacket from address without a connection", "from", addr)
 			return
 		}
-		wire, exists := s.wires[wireConnection]
-		if !exists {
-			slog.Warn("wire connection from address does not exist", "from", addr, "wireConnection", wireConnection)
-			return
-		}
 
-		station, exists := s.stations[stationID]
-		if !exists {
-			slog.Warn("station from address does not exist", "from", addr, "stationID", stationID)
-			return
-		}
-
-		wire.Disconnect(station)
 		slog.Info("disconnected station from wire", "stationID", stationID, "wire", wireConnection)
-		delete(s.stations, stationID)
 		delete(s.addrStationMap, addr.AddrPort())
 	case 0x3:
 		var dataPacket kob.DataPacket
@@ -153,27 +136,17 @@ func (s *Server) handleData(data []byte, addr *net.UDPAddr) {
 				slog.Error("failed to unmarshal IDPacket", "error", err)
 				return
 			}
-			wireConnection, exists := s.addrWireConnections[addr.AddrPort()]
-			if !exists {
-				slog.Warn("received IDPacket from address without a connection", "address", addr)
-				return
+			existingStation, exists := s.addrStationMap[addr.AddrPort()]
+			if exists {
+				if existingStation != idPacket.StationID {
+					slog.Debug("address already registered to a different station, overwriting registration", "address", addr, "existingStation", existingStation, "newStation", idPacket.StationID)
+					s.addrStationMap[addr.AddrPort()] = idPacket.StationID
+				}
+			} else {
+				slog.Info("registered station", "stationID", idPacket.StationID, "from", addr)
+				s.addrStationMap[addr.AddrPort()] = idPacket.StationID
 			}
-			wire, exists := s.wires[wireConnection]
-			if !exists {
-				slog.Warn("wire connection from address does not exist", "address", addr, "wireConnection", wireConnection)
-				return
-			}
-			station := kob.NewStation(s.ctx, idPacket.StationID, idPacket.Version)
-			wire.Connect(station)
-			s.stations[station.ID()] = station
-			s.addrStationMap[addr.AddrPort()] = station.ID()
 		} else {
-			station, exists := s.stations[dataPacket.StationID]
-			if !exists {
-				slog.Warn("received DataPacket for unknown station", "stationID", dataPacket.StationID)
-				return
-			}
-			station.PushCodeList(dataPacket.CodeList)
 
 			wire, exists := s.addrWireConnections[addr.AddrPort()]
 			if !exists {
@@ -189,7 +162,6 @@ func (s *Server) handleData(data []byte, addr *net.UDPAddr) {
 					}
 				}
 			}
-
 		}
 	case 0x4:
 		var connectPacket kob.ConnectPacket
@@ -197,10 +169,6 @@ func (s *Server) handleData(data []byte, addr *net.UDPAddr) {
 		if err != nil {
 			slog.Error("failed to unmarshal ConnectPacket", "error", err)
 			return
-		}
-		if _, exists := s.wires[connectPacket.Wire]; !exists {
-			slog.Info("setting up wire", "wire", connectPacket.Wire)
-			s.wires[connectPacket.Wire] = kob.NewWire(s.ctx)
 		}
 
 		existingConnection, exists := s.addrWireConnections[addr.AddrPort()]
