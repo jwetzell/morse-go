@@ -8,12 +8,12 @@ import (
 
 type ChannelListBegin struct{}
 
-func (c *ChannelListBegin) Encode() ([]byte, error) {
-	return []byte("CLB"), nil
+func (c *ChannelListBegin) Encode() (string, error) {
+	return "CLB", nil
 }
 
-func (c *ChannelListBegin) Decode(data []byte) error {
-	if string(data) != "CLB" {
+func (c *ChannelListBegin) Decode(data string) error {
+	if data != "CLB" {
 		return fmt.Errorf("invalid channel list begin message")
 	}
 	return nil
@@ -21,12 +21,12 @@ func (c *ChannelListBegin) Decode(data []byte) error {
 
 type ChannelListComplete struct{}
 
-func (c *ChannelListComplete) Encode() ([]byte, error) {
-	return []byte("CLC"), nil
+func (c *ChannelListComplete) Encode() (string, error) {
+	return "CLC", nil
 }
 
-func (c *ChannelListComplete) Decode(data []byte) error {
-	if string(data) != "CLC" {
+func (c *ChannelListComplete) Decode(data string) error {
+	if data != "CLC" {
 		return fmt.Errorf("invalid channel list complete message")
 	}
 	return nil
@@ -37,15 +37,15 @@ type ChannelListEntry struct {
 	Count uint
 }
 
-func (c *ChannelListEntry) Encode() ([]byte, error) {
+func (c *ChannelListEntry) Encode() (string, error) {
 	if c.Count == 0 {
-		return []byte(fmt.Sprintf("CLE,%s", c.Name)), nil
+		return fmt.Sprintf("CLE,%s", c.Name), nil
 	}
-	return []byte(fmt.Sprintf("CLE,%s,%d", c.Name, c.Count)), nil
+	return fmt.Sprintf("CLE,%s,%d", c.Name, c.Count), nil
 }
 
-func (c *ChannelListEntry) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (c *ChannelListEntry) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) < 2 || parts[0] != "CLE" {
 		return fmt.Errorf("invalid channel list entry message")
 	}
@@ -68,12 +68,12 @@ type ChannelListUpdate struct {
 	Count uint
 }
 
-func (c *ChannelListUpdate) Encode() ([]byte, error) {
-	return []byte(fmt.Sprintf("CLU,%s,%d", c.Name, c.Count)), nil
+func (c *ChannelListUpdate) Encode() (string, error) {
+	return fmt.Sprintf("CLU,%s,%d", c.Name, c.Count), nil
 }
 
-func (c *ChannelListUpdate) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (c *ChannelListUpdate) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) != 3 || parts[0] != "CLU" {
 		return fmt.Errorf("invalid channel list update message")
 	}
@@ -93,12 +93,12 @@ type ChannelJoin struct {
 	Attributes string
 }
 
-func (c *ChannelJoin) Encode() ([]byte, error) {
-	return []byte(fmt.Sprintf("CJN,%s,%s", c.Name, c.Attributes)), nil
+func (c *ChannelJoin) Encode() (string, error) {
+	return fmt.Sprintf("CJN,%s,%s", c.Name, c.Attributes), nil
 }
 
-func (c *ChannelJoin) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (c *ChannelJoin) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) != 3 || parts[0] != "CJN" {
 		return fmt.Errorf("invalid channel join message")
 	}
@@ -113,12 +113,12 @@ type ChannelJoinRequest struct {
 	Name string
 }
 
-func (c *ChannelJoinRequest) Encode() ([]byte, error) {
-	return []byte(fmt.Sprintf("JC,%s", c.Name)), nil
+func (c *ChannelJoinRequest) Encode() (string, error) {
+	return fmt.Sprintf("JC,%s", c.Name), nil
 }
 
-func (c *ChannelJoinRequest) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (c *ChannelJoinRequest) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) != 2 || parts[0] != "JC" {
 		return fmt.Errorf("invalid channel join request message")
 	}
@@ -132,12 +132,12 @@ type ListUpdate struct {
 	ChannelName string
 }
 
-func (l *ListUpdate) Encode() ([]byte, error) {
-	return []byte(fmt.Sprintf("LU,%s", l.ChannelName)), nil
+func (l *ListUpdate) Encode() (string, error) {
+	return fmt.Sprintf("LU,%s", l.ChannelName), nil
 }
 
-func (l *ListUpdate) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (l *ListUpdate) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) != 2 || parts[0] != "LU" {
 		return fmt.Errorf("invalid list update message")
 	}

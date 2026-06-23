@@ -11,13 +11,12 @@ type Connect struct {
 	ClientVersion string
 }
 
-func (c *Connect) Encode() ([]byte, error) {
-	return []byte("CN," + c.Name + "," + c.DeviceID + "," + c.ClientVersion), nil
+func (c *Connect) Encode() (string, error) {
+	return "CN," + c.Name + "," + c.DeviceID + "," + c.ClientVersion, nil
 }
 
-func (c *Connect) Decode(data []byte) error {
-	stringData := string(data)
-	parts := strings.Split(stringData, ",")
+func (c *Connect) Decode(data string) error {
+	parts := strings.Split(data, ",")
 
 	if len(parts) != 4 || parts[0] != "CN" {
 		return fmt.Errorf("invalid connect message")
@@ -36,13 +35,12 @@ type ConnectOK struct {
 	ServerVersion string // maybe?
 }
 
-func (c *ConnectOK) Encode() ([]byte, error) {
-	return []byte("COK," + c.UserID + "," + c.UserName + "," + c.ServerVersion), nil
+func (c *ConnectOK) Encode() (string, error) {
+	return "COK," + c.UserID + "," + c.UserName + "," + c.ServerVersion, nil
 }
 
-func (c *ConnectOK) Decode(data []byte) error {
-	stringData := string(data)
-	parts := strings.Split(stringData, ",")
+func (c *ConnectOK) Decode(data string) error {
+	parts := strings.Split(data, ",")
 
 	if len(parts) != 4 || parts[0] != "COK" {
 		return fmt.Errorf("invalid connect OK message")

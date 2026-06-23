@@ -8,15 +8,15 @@ import (
 
 type PON struct{}
 
-func (p *PON) Encode() ([]byte, error) {
-	return []byte("PON"), nil
+func (p *PON) Encode() (string, error) {
+	return "PON", nil
 }
 
-func (p *PON) Decode(data []byte) error {
+func (p *PON) Decode(data string) error {
 	if len(data) < 3 {
 		return fmt.Errorf("invalid PON message")
 	}
-	if string(data[0:3]) != "PON" {
+	if data[0:3] != "PON" {
 		return fmt.Errorf("invalid PON message")
 	}
 	return nil
@@ -24,15 +24,15 @@ func (p *PON) Decode(data []byte) error {
 
 type NOK struct{}
 
-func (n *NOK) Encode() ([]byte, error) {
-	return []byte("NOK"), nil
+func (n *NOK) Encode() (string, error) {
+	return "NOK", nil
 }
 
-func (n *NOK) Decode(data []byte) error {
+func (n *NOK) Decode(data string) error {
 	if len(data) < 3 {
 		return fmt.Errorf("invalid NOK message")
 	}
-	if string(data[0:3]) != "NOK" {
+	if data[0:3] != "NOK" {
 		return fmt.Errorf("invalid NOK message")
 	}
 	return nil
@@ -42,12 +42,12 @@ type DecodeMorse struct {
 	Message string
 }
 
-func (d *DecodeMorse) Encode() ([]byte, error) {
-	return []byte("DM," + d.Message), nil
+func (d *DecodeMorse) Encode() (string, error) {
+	return "DM," + d.Message, nil
 }
 
-func (d *DecodeMorse) Decode(data []byte) error {
-	parts := strings.SplitN(string(data), ",", 2)
+func (d *DecodeMorse) Decode(data string) error {
+	parts := strings.SplitN(data, ",", 2)
 	if len(parts) != 2 || parts[0] != "DM" {
 		return fmt.Errorf("invalid decode morse message")
 	}
@@ -61,12 +61,12 @@ type SpaceMark struct {
 	Mark  uint
 }
 
-func (s *SpaceMark) Encode() ([]byte, error) {
-	return []byte(fmt.Sprintf("SM,%d,%d", s.Space, s.Mark)), nil
+func (s *SpaceMark) Encode() (string, error) {
+	return fmt.Sprintf("SM,%d,%d", s.Space, s.Mark), nil
 }
 
-func (s *SpaceMark) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (s *SpaceMark) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) != 3 || parts[0] != "SM" {
 		return fmt.Errorf("invalid space mark message")
 	}
@@ -94,12 +94,12 @@ type IncomingSpaceMark struct {
 	Mark     uint
 }
 
-func (i *IncomingSpaceMark) Encode() ([]byte, error) {
-	return []byte(fmt.Sprintf("SMK,%s,%s,%s,%d,%d", i.Channel, i.UserID, i.UserName, i.Space, i.Mark)), nil
+func (i *IncomingSpaceMark) Encode() (string, error) {
+	return fmt.Sprintf("SMK,%s,%s,%s,%d,%d", i.Channel, i.UserID, i.UserName, i.Space, i.Mark), nil
 }
 
-func (i *IncomingSpaceMark) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (i *IncomingSpaceMark) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) != 6 || parts[0] != "SMK" {
 		return fmt.Errorf("invalid incoming space mark message")
 	}

@@ -9,12 +9,12 @@ type UserListBegin struct {
 	Channel string
 }
 
-func (u *UserListBegin) Encode() ([]byte, error) {
-	return []byte("ULB," + u.Channel), nil
+func (u *UserListBegin) Encode() (string, error) {
+	return "ULB," + u.Channel, nil
 }
 
-func (u *UserListBegin) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (u *UserListBegin) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) != 2 || parts[0] != "ULB" {
 		return fmt.Errorf("invalid user list begin message")
 	}
@@ -29,12 +29,12 @@ type UserListEntry struct {
 	UserName string
 }
 
-func (u *UserListEntry) Encode() ([]byte, error) {
-	return []byte("ULE," + u.Channel + "," + u.UserID + "," + u.UserName), nil
+func (u *UserListEntry) Encode() (string, error) {
+	return "ULE," + u.Channel + "," + u.UserID + "," + u.UserName, nil
 }
 
-func (u *UserListEntry) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (u *UserListEntry) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) != 4 || parts[0] != "ULE" {
 		return fmt.Errorf("invalid user list entry message")
 	}
@@ -50,12 +50,12 @@ type UserListComplete struct {
 	Channel string
 }
 
-func (u *UserListComplete) Encode() ([]byte, error) {
-	return []byte("ULC," + u.Channel), nil
+func (u *UserListComplete) Encode() (string, error) {
+	return "ULC," + u.Channel, nil
 }
 
-func (u *UserListComplete) Decode(data []byte) error {
-	parts := strings.Split(string(data), ",")
+func (u *UserListComplete) Decode(data string) error {
+	parts := strings.Split(data, ",")
 	if len(parts) != 2 || parts[0] != "ULC" {
 		return fmt.Errorf("invalid user list complete message")
 	}

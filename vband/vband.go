@@ -1,6 +1,6 @@
 package vband
 
 type VBandMessage interface {
-	Encode() ([]byte, error)
-	Decode([]byte) error
+	Encode() (string, error)
+	Decode(string) error
 }
