@@ -18,6 +18,15 @@ func (c *Channel) RemoveUser(userID string) {
 	}
 }
 
+func (c *Channel) HasUser(userID string) bool {
+	for _, user := range c.Users {
+		if user.ID == userID {
+			return true
+		}
+	}
+	return false
+}
+
 type User struct {
 	ID   string
 	Name string
@@ -25,6 +34,7 @@ type User struct {
 
 var channels = []Channel{
 	{Name: "Lobby", Users: []User{}},
+	{Name: "Practice Channel", Users: []User{}},
 	{Name: "Channel 1", Users: []User{}},
 	{Name: "Channel 2", Users: []User{}},
 	{Name: "Channel 3", Users: []User{}},
