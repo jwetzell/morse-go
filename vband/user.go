@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+type User struct {
+	ID   uint
+	Name string
+}
+
 type NameChange struct {
 	UserName string
 }

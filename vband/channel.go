@@ -6,6 +6,27 @@ import (
 	"strings"
 )
 
+type Channel struct {
+	Name  string
+	Users map[uint]*User
+}
+
+func (c *Channel) AddUser(user *User) {
+	if c.Users == nil {
+		c.Users = make(map[uint]*User)
+	}
+	c.Users[user.ID] = user
+}
+
+func (c *Channel) RemoveUser(userID uint) {
+	delete(c.Users, userID)
+}
+
+func (c *Channel) HasUser(userID uint) bool {
+	_, exists := c.Users[userID]
+	return exists
+}
+
 type ChannelListBegin struct{}
 
 func (c *ChannelListBegin) Encode() (string, error) {
@@ -34,7 +55,7 @@ func (c *ChannelListComplete) Decode(data string) error {
 
 type ChannelListEntry struct {
 	Name  string
-	Count uint
+	Count int
 }
 
 func (c *ChannelListEntry) Encode() (string, error) {
@@ -57,7 +78,7 @@ func (c *ChannelListEntry) Decode(data string) error {
 		if err != nil {
 			return fmt.Errorf("invalid count in channel list entry message: %w", err)
 		}
-		c.Count = uint(channelCount)
+		c.Count = int(channelCount)
 	}
 
 	return nil
@@ -65,16 +86,16 @@ func (c *ChannelListEntry) Decode(data string) error {
 
 type ChannelListUpdate struct {
 	Name  string
-	Count uint
+	Count int
 }
 
 func (c *ChannelListUpdate) Encode() (string, error) {
-	return fmt.Sprintf("CLU,%s,%d", c.Name, c.Count), nil
+	return fmt.Sprintf("CUP,%s,%d", c.Name, c.Count), nil
 }
 
 func (c *ChannelListUpdate) Decode(data string) error {
 	parts := strings.Split(data, ",")
-	if len(parts) != 3 || parts[0] != "CLU" {
+	if len(parts) != 3 || parts[0] != "CUP" {
 		return fmt.Errorf("invalid channel list update message")
 	}
 
@@ -83,7 +104,7 @@ func (c *ChannelListUpdate) Decode(data string) error {
 	if err != nil {
 		return fmt.Errorf("invalid count in channel list update message: %w", err)
 	}
-	c.Count = uint(channelCount)
+	c.Count = int(channelCount)
 
 	return nil
 }

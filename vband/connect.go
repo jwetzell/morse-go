@@ -2,6 +2,7 @@ package vband
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -30,13 +31,13 @@ func (c *Connect) Decode(data string) error {
 }
 
 type ConnectOK struct {
-	UserID        string
+	UserID        uint
 	UserName      string
 	ServerVersion string // maybe?
 }
 
 func (c *ConnectOK) Encode() (string, error) {
-	return "COK," + c.UserID + "," + c.UserName + "," + c.ServerVersion, nil
+	return fmt.Sprintf("COK,%d,%s,%s", c.UserID, c.UserName, c.ServerVersion), nil
 }
 
 func (c *ConnectOK) Decode(data string) error {
@@ -46,7 +47,11 @@ func (c *ConnectOK) Decode(data string) error {
 		return fmt.Errorf("invalid connect OK message")
 	}
 
-	c.UserID = parts[1]
+	userID, err := strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %v", err)
+	}
+	c.UserID = uint(userID)
 	c.UserName = parts[2]
 	c.ServerVersion = parts[3]
 

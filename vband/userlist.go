@@ -2,6 +2,7 @@ package vband
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -25,12 +26,12 @@ func (u *UserListBegin) Decode(data string) error {
 
 type UserListEntry struct {
 	Channel  string
-	UserID   string
+	UserID   uint
 	UserName string
 }
 
 func (u *UserListEntry) Encode() (string, error) {
-	return "ULE," + u.Channel + "," + u.UserID + "," + u.UserName, nil
+	return fmt.Sprintf("ULE,%s,%d,%s", u.Channel, u.UserID, u.UserName), nil
 }
 
 func (u *UserListEntry) Decode(data string) error {
@@ -40,7 +41,11 @@ func (u *UserListEntry) Decode(data string) error {
 	}
 
 	u.Channel = parts[1]
-	u.UserID = parts[2]
+	userID, err := strconv.ParseUint(parts[2], 10, 32)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %v", err)
+	}
+	u.UserID = uint(userID)
 	u.UserName = parts[3]
 
 	return nil
