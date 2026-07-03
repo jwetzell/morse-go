@@ -233,12 +233,87 @@ func (s *WebSocketServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						continue
 					}
 				}
+			case "SM":
+				userName, exists := s.socketUserNameMap[conn]
+				if !exists {
+					slog.Error("User not found for connection")
+					continue
+				}
+				userId, ok := s.userIDMap[userName]
+				if !ok {
+					slog.Error("User ID not found for user", "userName", userName)
+					continue
+				}
+				userChannel, err := s.GetUserChannel(userId)
+				if err != nil {
+					slog.Error("Failed to get user channel", "error", err)
+					continue
+				}
+
+				var spaceMarkMsg SpaceMark
+				err = spaceMarkMsg.Decode(stringMsg)
+				if err != nil {
+					slog.Error("Failed to decode space/mark message", "error", err)
+					continue
+				}
+
+				spaceMark := IncomingSpaceMark{
+					Channel:  userChannel.Name,
+					UserID:   userId,
+					UserName: userName,
+					Space:    spaceMarkMsg.Space,
+					Mark:     spaceMarkMsg.Mark,
+				}
+				encodedMsg, err := spaceMark.Encode()
+				if err != nil {
+					slog.Error("Failed to encode space/mark message", "error", err)
+					continue
+				}
+				for _, user := range userChannel.Users {
+					if user.ID == userId {
+						continue
+					}
+					for c, name := range s.socketUserNameMap {
+						if name == user.Name {
+							err := c.WriteMessage(websocket.TextMessage, []byte(encodedMsg))
+							if err != nil {
+								slog.Error("Failed to send space/mark message", "error", err)
+							}
+						}
+					}
+				}
 			default:
 				slog.Warn("unhandled command", "command", stringParts[0], "message", stringMsg)
 			}
 		}
 	}
 	slog.Info("Connection closed", "remoteAddr", r.RemoteAddr)
+	username, exists := s.socketUserNameMap[conn]
+	if exists {
+		delete(s.socketUserNameMap, conn)
+		delete(s.userIDMap, username)
+		for _, channel := range s.channels {
+			if channel.HasUser(s.userIDMap[username]) {
+				channel.RemoveUser(s.userIDMap[username])
+				channelUpdate := ChannelListUpdate{
+					Name:  channel.Name,
+					Count: len(channel.Users),
+				}
+				encodedMsg, err := channelUpdate.Encode()
+				if err != nil {
+					slog.Error("Failed to encode channel list update message", "error", err)
+					continue
+				}
+				for c := range s.socketUserNameMap {
+					err := c.WriteMessage(websocket.TextMessage, []byte(encodedMsg))
+					if err != nil {
+						slog.Error("Failed to send channel list update message", "error", err)
+						continue
+					}
+				}
+			}
+		}
+	}
 }
 
 func (s *WebSocketServer) Start(ctx context.Context, ip string, port uint) {

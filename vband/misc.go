@@ -88,14 +88,14 @@ func (s *SpaceMark) Decode(data string) error {
 
 type IncomingSpaceMark struct {
 	Channel  string
-	UserID   string
+	UserID   uint
 	UserName string
 	Space    uint
 	Mark     uint
 }
 
 func (i *IncomingSpaceMark) Encode() (string, error) {
-	return fmt.Sprintf("SMK,%s,%s,%s,%d,%d", i.Channel, i.UserID, i.UserName, i.Space, i.Mark), nil
+	return fmt.Sprintf("SMK,%s,%d,%s,%d,%d", i.Channel, i.UserID, i.UserName, i.Space, i.Mark), nil
 }
 
 func (i *IncomingSpaceMark) Decode(data string) error {
@@ -105,7 +105,11 @@ func (i *IncomingSpaceMark) Decode(data string) error {
 	}
 
 	i.Channel = parts[1]
-	i.UserID = parts[2]
+	userID, err := strconv.ParseUint(parts[2], 10, 32)
+	if err != nil {
+		return fmt.Errorf("invalid user ID in incoming space mark message: %w", err)
+	}
+	i.UserID = uint(userID)
 	i.UserName = parts[3]
 
 	space, err := strconv.ParseUint(parts[4], 10, 32)
