@@ -20,7 +20,7 @@ type WebSocketServer struct {
 	logger            *slog.Logger
 	upgrader          websocket.Upgrader
 	socketUserNameMap map[*websocket.Conn]string
-	userIDMap         map[uint]string
+	userIDMap         map[string]uint
 }
 
 func NewWebSocketServer() *WebSocketServer {
@@ -37,7 +37,7 @@ func NewWebSocketServer() *WebSocketServer {
 		logger:            slog.Default(),
 		upgrader:          upgrader,
 		socketUserNameMap: make(map[*websocket.Conn]string),
-		userIDMap:         make(map[uint]string),
+		userIDMap:         make(map[string]uint),
 	}
 }
 
@@ -69,15 +69,17 @@ func (s *WebSocketServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				slog.Info("Received connect message", "name", connectMsg.Name, "deviceID", connectMsg.DeviceID, "clientVersion", connectMsg.ClientVersion)
-				for _, existingName := range s.userIDMap {
-					if existingName == connectMsg.Name {
-						slog.Warn("Username already connected", "name", connectMsg.Name)
-						continue
-					}
+
+				existingUserId, exists := s.userIDMap[connectMsg.Name]
+
+				if exists {
+					slog.Warn("User already connected", "userName", connectMsg.Name, "userID", existingUserId)
+					continue
 				}
+
 				s.socketUserNameMap[conn] = connectMsg.Name
 				userID := s.GetNextUserID()
-				s.userIDMap[userID] = connectMsg.Name
+				s.userIDMap[connectMsg.Name] = userID
 				connectOKMsg := ConnectOK{
 					UserID:        userID,
 					UserName:      connectMsg.Name,
@@ -188,46 +190,47 @@ func (s *WebSocketServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					slog.Error("User not found for connection")
 					continue
 				}
-				for id, username := range s.userIDMap {
-					if username == userName {
-						user := &User{
-							ID:   id,
-							Name: userName,
-						}
-						channel.AddUser(user)
-						slog.Info("User joining channel", "userName", userName, "channel", channel.Name)
-						channelJoin := ChannelJoin{
-							Name:       channel.Name,
-							Attributes: "N", //TODO(jwetzell): what is this?
-						}
 
-						encodedMsg, err := channelJoin.Encode()
-						if err != nil {
-							slog.Error("Failed to encode channel join message", "error", err)
-							continue
-						}
-						err = conn.WriteMessage(websocket.TextMessage, []byte(encodedMsg))
-						if err != nil {
-							slog.Error("Failed to send channel join message", "error", err)
-							continue
-						}
-						channelUpdate := ChannelListUpdate{
-							Name:  channel.Name,
-							Count: len(channel.Users),
-						}
-						encodedMsg, err = channelUpdate.Encode()
-						if err != nil {
-							slog.Error("Failed to encode channel list update message", "error", err)
-							continue
-						}
-						for c := range s.socketUserNameMap {
-							err := c.WriteMessage(websocket.TextMessage, []byte(encodedMsg))
-							if err != nil {
-								slog.Error("Failed to send channel list update message", "error", err)
-								continue
-							}
-						}
-						break
+				userId, ok := s.userIDMap[userName]
+				if !ok {
+					slog.Error("User ID not found for user", "userName", userName)
+					continue
+				}
+				user := User{
+					ID:   userId,
+					Name: userName,
+				}
+				channel.AddUser(user)
+				slog.Info("User joining channel", "userName", userName, "channel", channel.Name)
+				channelJoin := ChannelJoin{
+					Name:       channel.Name,
+					Attributes: "N", //TODO(jwetzell): what is this?
+				}
+
+				encodedMsg, err := channelJoin.Encode()
+				if err != nil {
+					slog.Error("Failed to encode channel join message", "error", err)
+					continue
+				}
+				err = conn.WriteMessage(websocket.TextMessage, []byte(encodedMsg))
+				if err != nil {
+					slog.Error("Failed to send channel join message", "error", err)
+					continue
+				}
+				channelUpdate := ChannelListUpdate{
+					Name:  channel.Name,
+					Count: len(channel.Users),
+				}
+				encodedMsg, err = channelUpdate.Encode()
+				if err != nil {
+					slog.Error("Failed to encode channel list update message", "error", err)
+					continue
+				}
+				for c := range s.socketUserNameMap {
+					err := c.WriteMessage(websocket.TextMessage, []byte(encodedMsg))
+					if err != nil {
+						slog.Error("Failed to send channel list update message", "error", err)
+						continue
 					}
 				}
 			default:
@@ -269,7 +272,7 @@ func (s *WebSocketServer) CreateChannel(name string) error {
 	if exists {
 		return fmt.Errorf("channel already exists")
 	}
-	s.channels[name] = &Channel{Name: name, Users: make(map[uint]*User)}
+	s.channels[name] = &Channel{Name: name, Users: make(map[uint]User)}
 	return nil
 }
 
@@ -294,4 +297,18 @@ func (s *WebSocketServer) GetNextUserID() uint {
 	userID := s.latestUserID
 	s.latestUserID++
 	return userID
+}
+
+func (s *WebSocketServer) GetUserIDByName(name string) (uint, bool) {
+	userID, exists := s.userIDMap[name]
+	return userID, exists
+}
+
+func (s *WebSocketServer) GetUserChannel(userID uint) (*Channel, error) {
+	for _, channel := range s.channels {
+		if channel.HasUser(userID) {
+			return channel, nil
+		}
+	}
+	return nil, fmt.Errorf("user not found in any channel")
 }

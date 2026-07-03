@@ -8,12 +8,12 @@ import (
 
 type Channel struct {
 	Name  string
-	Users map[uint]*User
+	Users map[uint]User
 }
 
-func (c *Channel) AddUser(user *User) {
+func (c *Channel) AddUser(user User) {
 	if c.Users == nil {
-		c.Users = make(map[uint]*User)
+		c.Users = make(map[uint]User)
 	}
 	c.Users[user.ID] = user
 }
