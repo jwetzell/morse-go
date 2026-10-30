@@ -7,6 +7,9 @@ import (
 	"github.com/jwetzell/morse-go"
 )
 
+const MaxSerialNumber = 0b111111
+const MaxSpeed = 0b111111
+
 type Packet struct {
 	ProtoVersion uint8
 	SerialNumber uint8
@@ -53,11 +56,11 @@ func (p *Packet) MarshalBinary() ([]byte, error) {
 		return nil, fmt.Errorf("unsupported protocol version: %b", p.ProtoVersion)
 	}
 
-	if p.Speed == 0 || p.Speed > 0b111111 {
+	if p.Speed == 0 || p.Speed > MaxSpeed {
 		return nil, fmt.Errorf("unsupported speed: %b", p.Speed)
 	}
 
-	if p.SerialNumber > 0b111111 {
+	if p.SerialNumber > MaxSerialNumber {
 		return nil, fmt.Errorf("unsupported serial number: %b", p.SerialNumber)
 	}
 
