@@ -89,6 +89,7 @@ func (p *Packet) MarshalBinary() ([]byte, error) {
 				return nil, err
 			}
 			data[i] |= moppState << shift
+			//NOTE(jwetzell): should a MOPP packet be able to contain multiple "words"? is extra states an errorable thing?
 			if p.States[stateIndex] == morse.StateEOW {
 				return data, nil
 			}
