@@ -20,6 +20,9 @@ func (p *Packet) UnmarshalBinary(data []byte) error {
 	}
 
 	p.ProtoVersion = (data[0] & 0b11000000) >> 6
+	if p.ProtoVersion != 0b01 {
+		return fmt.Errorf("unsupported protocol version: %b", p.ProtoVersion)
+	}
 	p.SerialNumber = (data[0] & 0b00111111)
 	p.Speed = (data[1] & 0b11111100) >> 2
 	remnantState := (data[1] & 0b00000011)
@@ -46,16 +49,26 @@ func (p *Packet) UnmarshalBinary(data []byte) error {
 }
 
 func (p *Packet) MarshalBinary() ([]byte, error) {
-	if len(p.States) == 0 {
-		return nil, fmt.Errorf("no states to marshal")
-	}
 	if p.ProtoVersion != 0b01 {
 		return nil, fmt.Errorf("unsupported protocol version: %b", p.ProtoVersion)
+	}
+
+	if p.Speed == 0 || p.Speed > 0b111111 {
+		return nil, fmt.Errorf("unsupported speed: %b", p.Speed)
+	}
+
+	if p.SerialNumber > 0b111111 {
+		return nil, fmt.Errorf("unsupported serial number: %b", p.SerialNumber)
 	}
 
 	data := []byte{0, 0}
 	data[0] = (p.ProtoVersion << 6) | (p.SerialNumber & 0b00111111)
 	data[1] = (p.Speed << 2)
+
+	if len(p.States) == 0 {
+		data[1] |= byte(morse.StateEOW)
+		return data, nil
+	}
 
 	remnantState, err := morseStateToMopp(p.States[0])
 	if err != nil {
