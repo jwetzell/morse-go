@@ -12,9 +12,6 @@ import (
 	"time"
 
 	"github.com/jwetzell/morse-go/kob"
-	"gitlab.com/gomidi/midi/v2"
-	"gitlab.com/gomidi/midi/v2/drivers"
-	_ "gitlab.com/gomidi/midi/v2/drivers/rtmididrv"
 )
 
 var host string
@@ -23,7 +20,6 @@ var wire int
 var debug bool
 
 var stationID string
-var midiOut string
 
 func init() {
 	flag.StringVar(&host, "host", "mtc-kob.dyndns.org", "KOB server address")
@@ -31,11 +27,9 @@ func init() {
 	flag.IntVar(&wire, "wire", 101, "Wire number to connect to")
 	flag.BoolVar(&debug, "debug", false, "Enable debug logging")
 	flag.StringVar(&stationID, "station-id", "", "Station ID")
-	flag.StringVar(&midiOut, "midi-out", "", "MIDI output device name (optional)")
 }
 
 func main() {
-	defer midi.CloseDriver()
 	flag.Parse()
 
 	if stationID == "" {
@@ -159,28 +153,6 @@ func main() {
 	kobWire := kob.NewWire(ctx)
 	kobWire.Connect(station)
 
-	var midiOutDevice drivers.Out
-
-	if midiOut != "" {
-		out, err := midi.FindOutPort(midiOut)
-		if err != nil {
-			fmt.Printf("can't find MIDI output device: %s\n", midiOut)
-			return
-		}
-
-		err = out.Open()
-		if err != nil {
-			fmt.Printf("can't open MIDI output device: %s\n", midiOut)
-			return
-		}
-		defer func() {
-			midiOutDevice.Send([]byte{0x80, 76, 0})
-			out.Close()
-		}()
-
-		midiOutDevice = out
-	}
-
 	go func() {
 		defer func() {
 			slog.Debug("wire watcher stopped")
@@ -190,20 +162,10 @@ func main() {
 			case <-ctx.Done():
 				return
 			case state := <-kobWire.State:
-				var midiMsg []byte
-				// TODO(jwetzell): make midi configurable
 				if state {
-					midiMsg = []byte{0x90, 76, 127}
 					slog.Debug("wire state changed", "state", "open")
 				} else {
-					midiMsg = []byte{0x80, 76, 0}
 					slog.Debug("wire state changed", "state", "closed")
-				}
-				if midiOutDevice != nil {
-					err := midiOutDevice.Send(midiMsg)
-					if err != nil {
-						slog.Error("Failed to send MIDI message", "error", err)
-					}
 				}
 			default:
 				continue

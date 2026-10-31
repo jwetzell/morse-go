@@ -95,7 +95,7 @@ func (cs *ChatServer) handleMoppClient() {
 			slog.Error("Error unmarshalling MOPP packet", "err", err)
 			continue
 		}
-		receivedString, err := morse.IntlMorseCode.DecodeStates(moppPacket.States)
+		receivedString, err := morse.IntlMorseCode.DecodeString(moppPacket.States)
 		if err != nil {
 			slog.Error("Error decoding Morse code", "err", err)
 			continue
@@ -122,7 +122,7 @@ func (cs *ChatServer) handleMoppClient() {
 					ProtoVersion: 1,
 					Speed:        20,
 				}
-				states, err := morse.IntlMorseCode.EncodeStates(msg)
+				states, err := morse.IntlMorseCode.EncodeString(msg)
 				if err != nil {
 					slog.Error("Error encoding Morse code", "err", err)
 					return
@@ -173,7 +173,7 @@ func (cs *ChatServer) handleTextClient() {
 			case ' ':
 				continue
 			default:
-				_, ok := morse.IntlMorseCode.Encode(r)
+				_, ok := morse.IntlMorseCode.EncodeRune(r)
 				if !ok {
 					slog.Error("Error encoding character", "char", string(r))
 					continue
@@ -204,7 +204,7 @@ func (cs *ChatServer) handleTextClient() {
 					ProtoVersion: 1,
 					Speed:        20,
 				}
-				states, err := morse.IntlMorseCode.EncodeStates(msg)
+				states, err := morse.IntlMorseCode.EncodeString(msg)
 				if err != nil {
 					slog.Error("Error encoding Morse code", "err", err)
 					return
