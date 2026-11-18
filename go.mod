@@ -1,6 +1,6 @@
 module github.com/jwetzell/morse-go
 
-go 1.26.4
+go 1.27.4
 
 require (
 	github.com/gopxl/beep/v2 v2.1.1
