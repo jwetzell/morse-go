@@ -5,12 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/gopxl/beep/v2"
+	"github.com/gopxl/beep/v2/speaker"
 	"github.com/jwetzell/morse-go/kob"
 )
 
@@ -153,6 +157,18 @@ func main() {
 	kobWire := kob.NewWire(ctx)
 	kobWire.Connect(station)
 
+	sr := beep.SampleRate(48000)
+	speaker.Init(sr, 4800)
+
+	wireStreamer, err := NewWireStreamer(660, 0.8, sr, time.Millisecond*4, time.Millisecond*4)
+
+	if err != nil {
+		slog.Error("Failed to create WireStreamer", "error", err)
+		return
+	}
+
+	speaker.Play(wireStreamer)
+
 	go func() {
 		defer func() {
 			slog.Debug("wire watcher stopped")
@@ -162,11 +178,14 @@ func main() {
 			case <-ctx.Done():
 				return
 			case state := <-kobWire.State:
+				speaker.Lock()
+				wireStreamer.SetState(state)
 				if state {
 					slog.Debug("wire state changed", "state", "closed")
 				} else {
 					slog.Debug("wire state changed", "state", "open")
 				}
+				speaker.Unlock()
 			default:
 				continue
 			}
@@ -292,4 +311,91 @@ func main() {
 		}
 	}
 	<-ctx.Done()
+}
+
+type WireStreamer struct {
+	state               bool
+	mu                  sync.RWMutex
+	dt                  float64
+	t                   float64
+	inDelta             float64
+	inSamplesRemaining  int
+	inMultiplier        float64
+	outDelta            float64
+	outSamplesRemaining int
+	outMultiplier       float64
+	volume              float64
+	sr                  beep.SampleRate
+	riseTime            time.Duration
+	fallTime            time.Duration
+}
+
+func NewWireStreamer(frequency float64, volume float64, sr beep.SampleRate, riseTime time.Duration, fallTime time.Duration) (*WireStreamer, error) {
+	if sr <= 0 {
+		return nil, fmt.Errorf("invalid sample rate")
+	}
+
+	if frequency <= 0 {
+		return nil, fmt.Errorf("invalid frequency")
+	}
+
+	inSamples := sr.N(riseTime)
+	inDelta := 1.0 / float64(inSamples)
+	outSamples := sr.N(fallTime)
+	outDelta := 1.0 / float64(outSamples)
+	return &WireStreamer{
+		dt:       frequency / float64(sr),
+		volume:   volume,
+		inDelta:  inDelta,
+		outDelta: outDelta,
+		sr:       sr,
+		riseTime: riseTime,
+		fallTime: fallTime,
+	}, nil
+}
+
+func (ws *WireStreamer) Stream(samples [][2]float64) (n int, ok bool) {
+	ws.mu.RLock()
+	defer ws.mu.RUnlock()
+	toStream := len(samples)
+	for i := range samples[:toStream] {
+		v := math.Sin(ws.t * 2.0 * math.Pi)
+		samples[i][0] = v * ws.inMultiplier * ws.outMultiplier * ws.volume
+		samples[i][1] = v * ws.inMultiplier * ws.outMultiplier * ws.volume
+		_, ws.t = math.Modf(ws.t + ws.dt)
+		if ws.inSamplesRemaining > 0 {
+			ws.inMultiplier += ws.inDelta
+			ws.inSamplesRemaining--
+		}
+		if ws.outSamplesRemaining > 0 {
+			ws.outMultiplier -= ws.outDelta
+			ws.outSamplesRemaining--
+		}
+	}
+	return toStream, true
+}
+
+func (ws *WireStreamer) SetState(state bool) {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+
+	if ws.state == state {
+		return
+	}
+
+	if !ws.state && state {
+		ws.inSamplesRemaining = ws.sr.N(ws.riseTime)
+		ws.inMultiplier = 0.0
+		ws.outMultiplier = 1.0
+	}
+	if ws.state && !state {
+		ws.outSamplesRemaining = ws.sr.N(ws.fallTime)
+		ws.outMultiplier = 1.0
+		ws.inMultiplier = 1.0
+	}
+	ws.state = state
+}
+
+func (ws *WireStreamer) Err() error {
+	return nil
 }
