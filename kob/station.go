@@ -2,7 +2,9 @@ package kob
 
 import (
 	"context"
+	"log/slog"
 	"math"
+	"slices"
 	"sync"
 	"time"
 )
@@ -41,19 +43,8 @@ func (s *Station) processLoop() {
 		s.pendingEventsMu.Lock()
 		if len(s.pendingEvents) > 0 {
 			pending := s.pendingEvents[0]
-			if pending < 0 && len(s.pendingEvents) > 1 {
-				switch s.pendingEvents[1] {
-				case 2:
-					s.latched = false
-					s.pendingEvents = s.pendingEvents[2:]
-					s.sendState(false)
-					s.pendingEventsMu.Unlock()
-					continue
-				}
-			}
 			s.pendingEvents = s.pendingEvents[1:]
 			s.pendingEventsMu.Unlock()
-			time.Sleep(time.Duration(math.Abs(float64(pending))) * time.Millisecond)
 			switch pending {
 			case 1:
 				s.latched = true
@@ -64,6 +55,7 @@ func (s *Station) processLoop() {
 			default:
 				if !s.latched {
 					s.sendState(pending > 0)
+					time.Sleep(time.Duration(math.Abs(float64(pending))) * time.Millisecond)
 				}
 			}
 		} else {
@@ -82,6 +74,12 @@ func (s *Station) Version() string {
 
 func (s *Station) PushCodeList(codeList []int32) {
 	if len(codeList) == 0 {
+		return
+	}
+
+	if len(codeList) == 4 && slices.Equal(codeList, []int32{-32767, 2, -1000, 2}) {
+		// NOTE(jwetzell): this is some weird signalling sequence that MorseKOB servers send
+		slog.Debug("ignoring station change sequence", "stationID", s.id)
 		return
 	}
 

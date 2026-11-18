@@ -163,9 +163,9 @@ func main() {
 				return
 			case state := <-kobWire.State:
 				if state {
-					slog.Debug("wire state changed", "state", "open")
-				} else {
 					slog.Debug("wire state changed", "state", "closed")
+				} else {
+					slog.Debug("wire state changed", "state", "open")
 				}
 			default:
 				continue
